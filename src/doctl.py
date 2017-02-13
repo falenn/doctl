@@ -3,9 +3,11 @@
 from util.config import Config
 from delegates.volumes import Volumes
 from delegates.droplets import Droplets
+from delegates.networking import Networking
 import getopt
 import sys
 import json
+import time
 
 configFile = "config.yml"
 
@@ -43,6 +45,7 @@ def main(argv=None):
     # instantiate delegates passing in config.  Perhaps a better way to do this?
     vol = Volumes(conf)
     drop = Droplets(conf)
+    net = Networking(conf)
     print "Using DigitalOcean Token: %s" % conf.getToken()
     print "Using DigitalOcean URL: %s" % conf.getURL()
     print "Entire deployment config: %s" % conf.getConfig()
@@ -58,6 +61,8 @@ def main(argv=None):
     for d in minecraftDroplets['droplets']:
         print "%s\t%s\t%s\t%s\t%s\t%s" % (d['id'], d['name'], d['image']['distribution'], d['status'], d['size_slug'], d['tags'])
 
+
+
     vols = vol.getVolumes()
     #print "Found volumes: %s" % vols
     for v in vols['volumes']:
@@ -65,9 +70,24 @@ def main(argv=None):
         print "Volumes -----"
         print "id: %s name: %s" % (v['id'],v['name'])
 
-    dfd = drop.createDropletUnique(conf.getConfig()['deployment']['droplet'])
-    print "droplet status: %s" % dfd['status']
+    fips = net.getFloatingIPs()
+    print "Floating IPs: %s" % fips
 
+    # dropping existing droplet
+    status = drop.removeDropletByName(conf.getConfig()['deployment']['droplet']['name'])
+    time.sleep(5)
+    if status == 204:
+        print "creating droplet..."
+        droplet = drop.createDropletUnique(conf.getConfig()['deployment']['droplet'])
+        while droplet['status'] != "active":
+            time.sleep(10)
+            droplet = drop.getDropletByName(conf.getConfig()['deployment']['droplet']['name'])
+        print "Assigning Floating IP..."
+    fip = net.getAvailableFloatingIPbyIP(conf.getConfig()['deployment']['networking']['floating_ip'])
+    if bool(fip):
+        net.assignFloatingIPbyIPtoDroplet(conf.getConfig()['deployment']['networking']['floating_ip'],droplet)
+    else:
+        print "Not continuing.  See why droplet was not deleted."
 
 
 

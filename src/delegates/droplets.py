@@ -27,15 +27,16 @@ class Droplets(object):
         print "Looking for droplet with name: %s" % name
         response = self.getDroplets()
         print "Looking through %d droplets" % len(response['droplets'])
-        for d in response['droplets']:
-            print "Checking name %s" % d['name']
-            if d['name'] == name:
-                print "Found a droplet with name matching: %s" % name
-                return d
-        return []
+        for droplet in response['droplets']:
+            print "Checking name %s" % droplet['name']
+            if droplet['name'] == name:
+                print "Found a droplet with name matching: %s - %s" % (name,droplet)
+                return droplet
+        return {}
 
 
-
+    # Given a dropletRequest, will attempt to create a droplet.
+    # Return: droplet dict
     def createDroplet(self,dropletRequest):
         #"https://api.digitalocean.com/v2/droplets"
         url = self.conf.getURL()+"droplets"
@@ -48,21 +49,53 @@ class Droplets(object):
                 headers=self.conf.getHeaders(),
                 data=body)
             print "response: %s" % response.status_code
-            #if response.status_code == 202:
-            #data = json.loads(response.text)
-            return response.json()
+            if response.status_code == 202:
+                print "Droplet successfully created."
+                droplet = response.json()
+                print "About to return this %s" % droplet
+                return droplet['droplet']
         except ValueError:
             print "Error with droplet post: %s" % ValueError
+            return {}
 
     def createDropletUnique(self,dropletRequest):
         # create a droplet from the deployment configFile
         #{"name":"example.com","region":"nyc3","size":"512mb","image":"ubuntu-14-04-x64","ssh_keys":null,"backups":false,"ipv6":true,"user_data":null,"private_networking":null,"volumes": null,"tags":["web"]}'
-        dfd = self.getDropletByName(dropletRequest['name'])
+        droplet = self.getDropletByName(dropletRequest['name'])
         # check to see if already deployed
-        if len(dfd) < 1:
-            response = self.createDroplet(dropletRequest)
-            print "Droplet creation response: %s" % response
-            return response
+        if bool(droplet):
+            print "Droplet with name [%s] already exists." % droplet['name']
+            return droplet
         else:
-            print "Droplet with name [%s] already exists." % dfd['name']
-            return dfd
+            droplet = self.createDroplet(dropletRequest)
+            if bool(droplet):
+                print "Droplet creation successful"
+                return droplet
+            else:
+                print "Error with droplet creation."
+            return {}
+
+
+    def removeDropletByName(self,name):
+        print "removing droplet by name: %s" % name
+        try:
+            droplet = self.getDropletByName(name)
+            # if something exists here, attempt to continue
+            if bool(droplet):
+                print "Droplet %s with id %s to be removed." % (name,droplet['id'])
+                url = self.conf.getURL()+"droplets/"+str(droplet['id'])
+                response = requests.delete(url,
+                    headers=self.conf.getHeaders())
+                print "response: %s" % response.status_code
+                if response.status_code == 204:
+                    print "Deletion of droplet %s successful." % droplet['id']
+                    return response.status_code
+                else:
+                    print "There was an issue: %s" % response
+                    return response.status_code
+            else:
+                print "No droplet to remove with name: %s" % name
+                return 204
+        except(ValueError):
+            print "No droplets to remove with name %s %s" % (name,ValueError)
+            return 500
